@@ -13,7 +13,6 @@ class MainActivity : ComponentActivity() {
     private val requestPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             startForegroundServiceCompat()
-            // 権限取得後に画面は閉じない（テスト用）
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,6 +20,7 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
 
         findViewById<Button>(R.id.btnTest).setOnClickListener {
+            // テストボタン: このボタンを押すと数秒後に通知が飛びます
             BriefingNotifier(this).notifyMessage(getString(R.string.test_message))
         }
 
