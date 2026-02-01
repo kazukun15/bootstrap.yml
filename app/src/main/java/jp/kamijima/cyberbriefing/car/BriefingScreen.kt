@@ -34,8 +34,8 @@ class BriefingScreen(carContext: CarContext, private val session: BriefingSessio
                 message = "エラーが発生しました: ${e.localizedMessage}"
             } finally {
                 isLoading = false
-                invalidate() // Refresh UI
-                speak() // Auto Speak when loaded
+                invalidate()
+                speak()
             }
         }
     }

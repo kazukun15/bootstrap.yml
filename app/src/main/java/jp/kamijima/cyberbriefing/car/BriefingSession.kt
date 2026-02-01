@@ -23,6 +23,6 @@ class BriefingSession : Session(), DefaultLifecycleObserver {
     
     override fun onDestroy(owner: LifecycleOwner) {
         tts?.shutdown()
-        super.onDestroy(owner)
+        // super.onDestroy(owner) は不要（コンパイルエラー原因のため削除）
     }
 }
