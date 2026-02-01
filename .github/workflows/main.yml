@@ -1,4 +1,4 @@
-name: Bootstrap & Build Android App
+name: Bootstrap & Build Android App (Debug UI)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [ "main" ]
 
 permissions:
-  contents: write  # ソースコードを保存するために必要
+  contents: write
 
 jobs:
   build-and-deploy:
@@ -16,25 +16,19 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # 1. プロジェクト生成フェーズ (初回のみ実行)
+      # 1. プロジェクト生成フェーズ
       # ---------------------------------------------------------
-      - name: Generate project files (if missing)
+      - name: Generate project files (Force Update)
         id: generate
         shell: bash
         run: |
-          # アプリのビルドファイルがなければ生成実行
-          if [ -f "app/build.gradle.kts" ]; then
-            echo "Project already exists. Skipping generation."
-            echo "created=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
           echo "Generating Android project files..."
           set -euxo pipefail
 
           # ディレクトリ作成
           mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,core,net,notify,worker}
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/drawable-v24
@@ -92,7 +86,10 @@ jobs:
                   versionName = "1.0.0"
               }
 
-              buildFeatures { buildConfig = true }
+              buildFeatures { 
+                  buildConfig = true 
+                  viewBinding = true
+              }
 
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
@@ -105,6 +102,7 @@ jobs:
               implementation("androidx.core:core-ktx:1.13.1")
               implementation("androidx.appcompat:appcompat:1.7.0")
               implementation("com.google.android.material:material:1.12.0")
+              implementation("androidx.constraintlayout:constraintlayout:2.1.4")
               implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
               implementation("androidx.lifecycle:lifecycle-service:2.8.4")
               implementation("androidx.work:work-runtime-ktx:2.9.1")
@@ -168,6 +166,9 @@ jobs:
               <string name="notification_channel_monitor">Connection Monitor</string>
               <string name="monitor_service_title">Auto Monitor Active</string>
               <string name="monitor_service_desc">Waiting for vehicle connection...</string>
+              <string name="status_monitoring">監視中: サービス稼働しています</string>
+              <string name="btn_test_notify">テスト通知を送る</string>
+              <string name="test_message">これはテスト通知です。Android Autoで表示されていますか？</string>
           </resources>
           EOF
 
@@ -175,6 +176,42 @@ jobs:
           <resources>
               <style name="Theme.CyberDailyBriefing" parent="Theme.Material3.DayNight.NoActionBar"/>
           </resources>
+          EOF
+
+          # --- Layout ---
+          cat > app/src/main/res/layout/activity_main.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:app="http://schemas.android.com/apk/res-auto"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:padding="24dp"
+              android:background="#101820">
+
+              <TextView
+                  android:id="@+id/tvStatus"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="@string/status_monitoring"
+                  android:textColor="#00E5FF"
+                  android:textSize="18sp"
+                  android:textStyle="bold"
+                  app:layout_constraintTop_toTopOf="parent"
+                  app:layout_constraintStart_toStartOf="parent"
+                  app:layout_constraintEnd_toEndOf="parent"
+                  app:layout_constraintBottom_toTopOf="@+id/btnTest"/>
+
+              <Button
+                  android:id="@+id/btnTest"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="@string/btn_test_notify"
+                  app:layout_constraintTop_toBottomOf="@+id/tvStatus"
+                  app:layout_constraintStart_toStartOf="parent"
+                  app:layout_constraintEnd_toEndOf="parent"
+                  app:layout_constraintBottom_toBottomOf="parent"/>
+
+          </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
           # --- Icons ---
@@ -215,21 +252,32 @@ jobs:
           import android.content.Intent
           import android.os.Build
           import android.os.Bundle
+          import android.widget.Button
           import androidx.activity.ComponentActivity
           import androidx.activity.result.contract.ActivityResultContracts
           import jp.kamijima.cyberbriefing.car.AutoConnectionService
+          import jp.kamijima.cyberbriefing.notify.BriefingNotifier
+
           class MainActivity : ComponentActivity() {
               private val requestPermissions =
                   registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
                       startForegroundServiceCompat()
-                      finish()
+                      // 権限取得後に画面は閉じない（テスト用）
                   }
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  findViewById<Button>(R.id.btnTest).setOnClickListener {
+                      BriefingNotifier(this).notifyMessage(getString(R.string.test_message))
+                  }
+
                   val perms = mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
                   if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
                   requestPermissions.launch(perms.toTypedArray())
               }
+              
               private fun startForegroundServiceCompat() {
                   val intent = Intent(this, AutoConnectionService::class.java)
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { startForegroundService(intent) } else { startService(intent) }
@@ -511,11 +559,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Bootstrap: Generate Android Project"
+          git commit -m "Bootstrap: Generate Android Project (Debug)"
           git push
 
       # ---------------------------------------------------------
-      # 2. ビルド & デプロイフェーズ (毎回実行)
+      # 2. ビルド & デプロイフェーズ
       # ---------------------------------------------------------
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -538,5 +586,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: CyberDailyBriefing_Debug.apk
           path: app/build/outputs/apk/debug/app-debug.apk
