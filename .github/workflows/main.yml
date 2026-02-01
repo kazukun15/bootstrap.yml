@@ -1,44 +1,34 @@
-name: Build Ambient Flow (Fix Visibility)
+name: Bootstrap Android Project
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/bootstrap.yml"
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  bootstrap:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Gradle 8.6
-        shell: bash
-        run: |
-          set -euxo pipefail
-          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
-          unzip -q gradle-8.6-bin.zip
-          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
-
-      - name: Generate Project Files
+      - name: Generate project files
         shell: bash
         run: |
           set -euxo pipefail
 
-          # ★変更点1：パッケージ名を「com.example」以外にする（重要）
-          PKG="jp.kazukun.ambient"
-          APP_LABEL="Ambient Flow"
+          mkdir -p .github/workflows
+          mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,core,net,notify,worker}
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/drawable-v24
 
-          # 1. Settings
-          cat > settings.gradle.kts <<EOF
+          cat > settings.gradle.kts <<'EOF'
           pluginManagement {
               repositories {
                   google()
@@ -53,50 +43,44 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "AmbientFlow"
+          rootProject.name = "CyberDailyBriefing"
           include(":app")
           EOF
 
-          # 2. Build Gradle (Project)
-          cat > build.gradle.kts <<EOF
+          cat > build.gradle.kts <<'EOF'
           plugins {
-              id("com.android.application") version "8.3.0" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+              id("com.android.application") version "8.3.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
           }
           EOF
 
-          # 3. Gradle Properties
-          cat > gradle.properties <<EOF
-          org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
           android.useAndroidX=true
-          android.enableJetifier=true
-          kotlin.code.style=official
           android.nonTransitiveRClass=true
+          kotlin.code.style=official
           EOF
 
-          # 4. App Module
-          mkdir -p app/src/main/{java/jp/kazukun/ambient,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
-
-          cat > app/build.gradle.kts <<EOF
+          cat > app/build.gradle.kts <<'EOF'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
           }
 
           android {
-              namespace = "$PKG"
-              compileSdk = 34
+              namespace = "jp.kamijima.cyberbriefing"
+              compileSdk = 35
 
               defaultConfig {
-                  applicationId = "$PKG"
+                  applicationId = "jp.kamijima.cyberbriefing"
                   minSdk = 26
-                  targetSdk = 34
-                  versionCode = 2
-                  versionName = "2.0.Fix"
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0.0"
               }
-              buildTypes {
-                  release { isMinifyEnabled = false }
-              }
+
+              buildFeatures { buildConfig = true }
+
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
@@ -105,256 +89,554 @@ jobs:
           }
 
           dependencies {
-              implementation("androidx.core:core-ktx:1.12.0")
-              implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("androidx.media:media:1.7.0")
-              implementation("com.google.android.gms:play-services-location:21.0.1")
-              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("com.google.android.material:material:1.12.0")
+
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+              implementation("androidx.lifecycle:lifecycle-service:2.8.4")
+
+              implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+              implementation("com.google.android.gms:play-services-location:21.3.0")
+
+              implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+              // Android Auto接続状態の検知（CarConnection）
+              implementation("androidx.car.app:app:1.4.0")
           }
           EOF
 
-          # --- Resources ---
-          cat > app/src/main/res/values/strings.xml <<EOF
+          cat > app/proguard-rules.pro <<'EOF'
+          # (empty)
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+              <application
+                  android:allowBackup="true"
+                  android:label="@string/app_name"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.CyberDailyBriefing">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".car.AutoConnectionService"
+                      android:exported="false" />
+
+                  <receiver
+                      android:name=".car.BootReceiver"
+                      android:exported="false">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                          <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
+                      </intent-filter>
+                  </receiver>
+
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/values/strings.xml <<'EOF'
           <resources>
-              <string name="app_name">$APP_LABEL</string>
+              <string name="app_name">Cyber Daily Briefing</string>
           </resources>
           EOF
 
-          cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses name="media" />
-          </automotiveApp>
+          cat > app/src/main/res/values/themes.xml <<'EOF'
+          <resources>
+              <style name="Theme.CyberDailyBriefing" parent="Theme.Material3.DayNight.NoActionBar"/>
+          </resources>
           EOF
 
-          # Icons
-          cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
-          </vector>
-          EOF
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#00E5FF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/>
-          </vector>
-          EOF
-          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
               <foreground android:drawable="@drawable/ic_launcher_foreground"/>
           </adaptive-icon>
           EOF
-          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # Manifest
-          # ★変更点2：Android 14 (API 34) に必要な権限を全て追加
-          cat > app/src/main/AndroidManifest.xml <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
-              
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.INTERNET" />
-
-              <application
-                  android:label="$APP_LABEL"
-                  android:allowBackup="false"
-                  android:supportsRtl="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:theme="@style/Theme.AppCompat.NoActionBar">
-
-                  <meta-data
-                      android:name="com.google.android.gms.car.application"
-                      android:resource="@xml/automotive_app_desc" />
-
-                  <service
-                      android:name=".AmbientMediaService"
-                      android:exported="true"
-                      android:foregroundServiceType="location|mediaPlayback">
-                      <intent-filter>
-                          <action android:name="android.media.browse.MediaBrowserService" />
-                      </intent-filter>
-                  </service>
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml <<'EOF'
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_launcher_background"/>
+              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
           EOF
 
-          # --- Kotlin Code ---
-          # 1. MainActivity
-          cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
-          package $PKG
+          cat > app/src/main/res/drawable/ic_launcher_background.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#101820" android:pathData="M0,0h108v108h-108z"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable-v24/ic_launcher_foreground.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#00E5FF" android:pathData="M28,54h52v4h-52z"/>
+              <path android:fillColor="#00E5FF" android:pathData="M54,28h4v52h-4z"/>
+              <path android:fillColor="#00E5FF" android:pathData="M24,24h8v8h-8z"/>
+              <path android:fillColor="#00E5FF" android:pathData="M76,24h8v8h-8z"/>
+              <path android:fillColor="#00E5FF" android:pathData="M24,76h8v8h-8z"/>
+              <path android:fillColor="#00E5FF" android:pathData="M76,76h8v8h-8z"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/MainActivity.kt <<'EOF'
+          package jp.kamijima.cyberbriefing
+
           import android.Manifest
-          import android.content.pm.PackageManager
+          import android.content.Intent
           import android.os.Build
           import android.os.Bundle
-          import androidx.appcompat.app.AppCompatActivity
-          import androidx.core.app.ActivityCompat
-          import androidx.core.content.ContextCompat
+          import androidx.activity.ComponentActivity
+          import androidx.activity.result.contract.ActivityResultContracts
+          import jp.kamijima.cyberbriefing.car.AutoConnectionService
 
-          class MainActivity : AppCompatActivity() {
+          class MainActivity : ComponentActivity() {
+              private val requestPermissions =
+                  registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+                      startService(Intent(this, AutoConnectionService::class.java))
+                      finish()
+                  }
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  
-                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (Build.VERSION.SDK_INT >= 33) {
-                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  }
-                  
-                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
-                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
-                  }
+                  val perms = mutableListOf(
+                      Manifest.permission.ACCESS_COARSE_LOCATION,
+                      Manifest.permission.ACCESS_FINE_LOCATION
+                  )
+                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                  requestPermissions.launch(perms.toTypedArray())
               }
           }
           EOF
 
-          # 2. Service
-          cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
-          package $PKG
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BootReceiver.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.car
 
-          import android.Manifest
+          import android.content.BroadcastReceiver
           import android.content.Context
-          import android.content.pm.PackageManager
-          import android.graphics.Bitmap
-          import android.graphics.Color
-          import android.location.Location
-          import android.location.LocationListener
-          import android.location.LocationManager
-          import android.os.Bundle
-          import android.support.v4.media.MediaBrowserCompat
-          import android.support.v4.media.MediaMetadataCompat
-          import android.support.v4.media.session.MediaSessionCompat
-          import android.support.v4.media.session.PlaybackStateCompat
-          import androidx.core.content.ContextCompat
-          import androidx.media.MediaBrowserServiceCompat
-          import kotlinx.coroutines.*
-          import kotlin.math.*
+          import android.content.Intent
 
-          class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
-              private lateinit var mediaSession: MediaSessionCompat
-              private var locationManager: LocationManager? = null
-              private val renderScope = CoroutineScope(Dispatchers.Default + Job())
-              private var isRunning = false
-              private var currentSpeedFactor = 0.1f
-              private var time = 0.0
-              
-              private val WIDTH = 512
-              private val HEIGHT = 512
-              private val pixels = IntArray(WIDTH * HEIGHT)
-              private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
+          class BootReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  context.startService(Intent(context, AutoConnectionService::class.java))
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/AutoConnectionService.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.car
+
+          import android.app.Service
+          import android.content.Intent
+          import androidx.car.app.connection.CarConnection
+          import androidx.lifecycle.LifecycleService
+          import jp.kamijima.cyberbriefing.core.DailyExecutionGuard
+          import jp.kamijima.cyberbriefing.core.WorkScheduler
+
+          class AutoConnectionService : LifecycleService() {
+              private var lastState: Int = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
 
               override fun onCreate() {
                   super.onCreate()
-                  
-                  mediaSession = MediaSessionCompat(this, "AmbientFlowSession").apply {
-                      setCallback(object : MediaSessionCompat.Callback() {})
-                      isActive = true
-                      setPlaybackState(PlaybackStateCompat.Builder()
-                          .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
-                          .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
-                          .build())
-                      updateMetadata(bitmap)
-                  }
-                  sessionToken = mediaSession.sessionToken
-                  
-                  setupLocation()
-                  startRendering()
-              }
+                  val guard = DailyExecutionGuard(this)
 
-              private fun setupLocation() {
-                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                      locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                      try {
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 1f, this)
-                      } catch (e: Exception) { e.printStackTrace() }
-                  }
-              }
-
-              private fun startRendering() {
-                  isRunning = true
-                  renderScope.launch {
-                      while (isActive && isRunning) {
-                          time += currentSpeedFactor * 0.4
-                          for (y in 0 until HEIGHT) {
-                              val v = (y.toDouble() / HEIGHT) * 2.0 - 1.0
-                              val cy = cos(v * 4.0 - time)
-                              for (x in 0 until WIDTH) {
-                                  val u = (x.toDouble() / WIDTH) * 2.0 - 1.0
-                                  var val1 = sin(u * 4.0 + time)
-                                  var val2 = cy
-                                  var val3 = sin((u + v + time) * 2.0)
-                                  val f = (val1 + val2 + val3) / 3.0
-                                  
-                                  val r = (sin(f * Math.PI) * 127 + 128).toInt()
-                                  val g = (cos(f * Math.PI) * 127 + 128).toInt()
-                                  val b = (sin(f * Math.PI + time) * 127 + 128).toInt()
-                                  pixels[y * WIDTH + x] = Color.rgb(r, g, b)
-                              }
+                  CarConnection(applicationContext).type.observe(this) { state ->
+                      val prev = lastState
+                      lastState = state
+                      if (prev != CarConnection.CONNECTION_TYPE_PROJECTION &&
+                          state == CarConnection.CONNECTION_TYPE_PROJECTION
+                      ) {
+                          if (guard.shouldRunToday()) {
+                              WorkScheduler.enqueueBriefing(applicationContext)
                           }
-                          withContext(Dispatchers.Main) {
-                              bitmap.setPixels(pixels, 0, WIDTH, 0, 0, WIDTH, HEIGHT)
-                              updateMetadata(bitmap)
-                          }
-                          delay(33)
                       }
                   }
               }
 
-              private fun updateMetadata(bmp: Bitmap) {
-                  mediaSession.setMetadata(MediaMetadataCompat.Builder()
-                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, " ")
-                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, " ")
-                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bmp)
-                      .build())
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  return Service.START_STICKY
               }
-
-              override fun onLocationChanged(location: Location) {
-                  currentSpeedFactor = 0.05f + (location.speed * 3.6f / 150f).coerceAtMost(0.8f)
-              }
-
-              override fun onDestroy() {
-                  isRunning = false
-                  renderScope.cancel()
-                  locationManager?.removeUpdates(this)
-                  mediaSession.isActive = false
-                  mediaSession.release()
-                  super.onDestroy()
-              }
-              
-              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
-              override fun onProviderEnabled(p: String) {}
-              override fun onProviderDisabled(p: String) {}
-              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot { return BrowserRoot("ROOT", null) }
-              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) { res.sendResult(mutableListOf()) }
           }
           EOF
 
-      - name: Build APK
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/core/DailyExecutionGuard.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.core
+
+          import android.content.Context
+          import java.time.LocalDate
+
+          class DailyExecutionGuard(context: Context) {
+              private val prefs = context.getSharedPreferences("cyber_briefing", Context.MODE_PRIVATE)
+
+              fun shouldRunToday(): Boolean {
+                  val today = LocalDate.now().toString()
+                  val last = prefs.getString("last_execution_date", null)
+                  if (last == today) return false
+                  prefs.edit().putString("last_execution_date", today).apply()
+                  return true
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/core/WorkScheduler.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.core
+
+          import android.content.Context
+          import androidx.work.Constraints
+          import androidx.work.NetworkType
+          import androidx.work.OneTimeWorkRequestBuilder
+          import androidx.work.WorkManager
+          import jp.kamijima.cyberbriefing.worker.BriefingWorker
+
+          object WorkScheduler {
+              fun enqueueBriefing(context: Context) {
+                  val constraints = Constraints.Builder()
+                      .setRequiredNetworkType(NetworkType.CONNECTED)
+                      .build()
+
+                  val req = OneTimeWorkRequestBuilder<BriefingWorker>()
+                      .setConstraints(constraints)
+                      .addTag("daily_briefing")
+                      .build()
+
+                  WorkManager.getInstance(context).enqueue(req)
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/worker/DateUtil.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.worker
+
+          import java.time.LocalDate
+
+          object DateUtil {
+              fun todayMonthDay(): Pair<String, String> {
+                  val d = LocalDate.now()
+                  val mm = d.monthValue.toString().padStart(2, '0')
+                  val dd = d.dayOfMonth.toString().padStart(2, '0')
+                  return mm to dd
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/worker/BriefingWorker.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.worker
+
+          import android.content.Context
+          import androidx.work.CoroutineWorker
+          import androidx.work.WorkerParameters
+          import jp.kamijima.cyberbriefing.net.LocationProvider
+          import jp.kamijima.cyberbriefing.net.OnThisDayClient
+          import jp.kamijima.cyberbriefing.net.WeatherClient
+          import jp.kamijima.cyberbriefing.notify.BriefingComposer
+          import jp.kamijima.cyberbriefing.notify.BriefingNotifier
+
+          class BriefingWorker(appContext: Context, params: WorkerParameters)
+              : CoroutineWorker(appContext, params) {
+
+              override suspend fun doWork(): Result {
+                  return try {
+                      val loc = LocationProvider(applicationContext).getCurrentLocationOrNull()
+                      val (mm, dd) = DateUtil.todayMonthDay()
+                      val onThisDay = OnThisDayClient().fetchOneEventJa(mm, dd)
+                      val weather = if (loc != null) {
+                          WeatherClient().fetchWeatherSummary(loc.latitude, loc.longitude)
+                      } else null
+
+                      val text = BriefingComposer.composeCyber(mm, dd, onThisDay, weather)
+                      BriefingNotifier(applicationContext).notifyMessage(text)
+                      Result.success()
+                  } catch (_: Exception) {
+                      Result.failure()
+                  }
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/net/LocationProvider.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.net
+
+          import android.annotation.SuppressLint
+          import android.content.Context
+          import com.google.android.gms.location.LocationServices
+          import kotlinx.coroutines.suspendCancellableCoroutine
+          import kotlin.coroutines.resume
+
+          data class SimpleLocation(val latitude: Double, val longitude: Double)
+
+          class LocationProvider(private val context: Context) {
+              @SuppressLint("MissingPermission")
+              suspend fun getCurrentLocationOrNull(): SimpleLocation? {
+                  val client = LocationServices.getFusedLocationProviderClient(context)
+                  return suspendCancellableCoroutine { cont ->
+                      client.lastLocation
+                          .addOnSuccessListener { loc ->
+                              cont.resume(loc?.let { SimpleLocation(it.latitude, it.longitude) })
+                          }
+                          .addOnFailureListener { cont.resume(null) }
+                  }
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/net/OnThisDayClient.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.net
+
+          import okhttp3.OkHttpClient
+          import okhttp3.Request
+          import org.json.JSONObject
+
+          class OnThisDayClient {
+              private val http = OkHttpClient()
+
+              suspend fun fetchOneEventJa(mm: String, dd: String): String? {
+                  val url = "https://api.wikimedia.org/feed/v1/wikipedia/ja/onthisday/events/$mm/$dd"
+                  val req = Request.Builder()
+                      .url(url)
+                      .header("User-Agent", "CyberDailyBriefing/1.0 (Android)")
+                      .build()
+
+                  http.newCall(req).execute().use { res ->
+                      if (!res.isSuccessful) return null
+                      val body = res.body?.string() ?: return null
+                      val json = JSONObject(body)
+                      val events = json.optJSONArray("events") ?: return null
+
+                      var best: String? = null
+                      var bestLen = Int.MAX_VALUE
+                      for (i in 0 until events.length()) {
+                          val ev = events.getJSONObject(i)
+                          val text = ev.optString("text").trim()
+                          if (text.isBlank()) continue
+                          val len = text.length
+                          if (len in 20..90 && len < bestLen) { best = text; bestLen = len }
+                      }
+                      if (best == null && events.length() > 0) {
+                          best = events.getJSONObject(0).optString("text").trim().ifBlank { null }
+                      }
+                      return best
+                  }
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/net/WeatherClient.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.net
+
+          import okhttp3.OkHttpClient
+          import okhttp3.Request
+          import org.json.JSONObject
+          import kotlin.math.roundToInt
+
+          class WeatherClient {
+              private val http = OkHttpClient()
+
+              suspend fun fetchWeatherSummary(lat: Double, lon: Double): String? {
+                  val url = "https://api.open-meteo.com/v1/forecast" +
+                          "?latitude=$lat&longitude=$lon" +
+                          "&hourly=precipitation_probability,temperature_2m" +
+                          "&current_weather=true" +
+                          "&timezone=Asia%2FTokyo"
+                  val req = Request.Builder().url(url).build()
+
+                  http.newCall(req).execute().use { res ->
+                      if (!res.isSuccessful) return null
+                      val body = res.body?.string() ?: return null
+                      val json = JSONObject(body)
+
+                      val current = json.optJSONObject("current_weather")
+                      val tempNow = current?.optDouble("temperature", Double.NaN)
+
+                      val hourly = json.optJSONObject("hourly")
+                      val probs = hourly?.optJSONArray("precipitation_probability")
+                      val temps = hourly?.optJSONArray("temperature_2m")
+
+                      var maxProb = -1
+                      if (probs != null) {
+                          val n = minOf(3, probs.length())
+                          for (i in 0 until n) {
+                              val p = probs.optInt(i, -1)
+                              if (p > maxProb) maxProb = p
+                          }
+                      }
+
+                      val t = when {
+                          temps != null && temps.length() > 0 -> temps.optDouble(0, Double.NaN)
+                          else -> tempNow ?: Double.NaN
+                      }
+                      val tStr = if (!t.isNaN()) "${t.roundToInt()}度" else null
+
+                      val probStr = when {
+                          maxProb >= 70 -> "降雨の可能性が高い"
+                          maxProb >= 40 -> "降雨の可能性があります"
+                          maxProb >= 10 -> "弱い降雨の可能性があります"
+                          maxProb in 0..9 -> "大きな降雨兆候は低い"
+                          else -> null
+                      }
+
+                      return listOfNotNull(
+                          probStr?.let { "午後に向けて$it" },
+                          tStr?.let { "気温は概ね$tStr" }
+                      ).joinToString("。").ifBlank { null }
+                  }
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/notify/BriefingComposer.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.notify
+
+          object BriefingComposer {
+              fun composeCyber(mm: String, dd: String, onThisDay: String?, weather: String?): String {
+                  val datePart = "${mm.toInt()}月${dd.toInt()}日"
+                  val today = onThisDay?.let { sanitize(it) } ?: "本日の履歴データは取得できませんでした"
+                  val w = weather?.let { sanitize(it) } ?: "気象データは未取得です"
+
+                  val raw = buildString {
+                      append("システム通知。")
+                      append("本日は").append(datePart).append("。")
+                      append(today).append("。")
+                      append("現在地周辺では").append(w).append("。")
+                      append("運転環境の変化に注意してください。")
+                  }
+                  return if (raw.length <= 140) raw else raw.take(140) + "…"
+              }
+
+              private fun sanitize(s: String): String =
+                  s.replace(Regex("\\s+"), " ").trim()
+          }
+          EOF
+
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/notify/BriefingNotifier.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.notify
+
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.content.Context
+          import android.content.Intent
+          import android.os.Build
+          import androidx.core.app.NotificationCompat
+          import androidx.core.app.Person
+          import jp.kamijima.cyberbriefing.MainActivity
+          import jp.kamijima.cyberbriefing.R
+
+          class BriefingNotifier(private val context: Context) {
+              private val channelId = "daily_briefing"
+
+              fun notifyMessage(text: String) {
+                  ensureChannel()
+
+                  val systemPerson = Person.Builder().setName("SYSTEM").build()
+                  val style = NotificationCompat.MessagingStyle(systemPerson)
+                      .setConversationTitle("Daily Briefing")
+                      .addMessage(text, System.currentTimeMillis(), systemPerson)
+
+                  val intent = Intent(context, MainActivity::class.java)
+                  val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                          (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+                  val pi = PendingIntent.getActivity(context, 0, intent, flags)
+
+                  val n = NotificationCompat.Builder(context, channelId)
+                      .setSmallIcon(R.mipmap.ic_launcher)
+                      .setContentTitle("Daily Briefing")
+                      .setContentText(text)
+                      .setStyle(style)
+                      .setContentIntent(pi)
+                      .setAutoCancel(true)
+                      .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                      .build()
+
+                  val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  nm.notify(1001, n)
+              }
+
+              private fun ensureChannel() {
+                  if (Build.VERSION.SDK_INT < 26) return
+                  val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  nm.createNotificationChannel(
+                      NotificationChannel(channelId, "Daily Briefing", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                          description = "Android Auto 向けの1日1回ブリーフィング"
+                      }
+                  )
+              }
+          }
+          EOF
+
+          # Build workflow (android.yml) - wrapper不要のGradle実行
+          cat > .github/workflows/android.yml <<'EOF'
+          name: Build APK (Cyber Daily Briefing)
+
+          on:
+            push:
+              branches: [ "main" ]
+            workflow_dispatch:
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+
+                - name: Set up JDK 17
+                  uses: actions/setup-java@v4
+                  with:
+                    distribution: "temurin"
+                    java-version: "17"
+
+                - name: Set up Android SDK
+                  uses: android-actions/setup-android@v3
+
+                - name: Set up Gradle
+                  uses: gradle/actions/setup-gradle@v3
+                  with:
+                    gradle-version: "8.6"
+
+                - name: Build Debug APK
+                  run: |
+                    gradle --no-daemon assembleDebug
+
+                - name: Upload APK artifact
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: app-debug
+                    path: app/build/outputs/apk/debug/app-debug.apk
+          EOF
+
+      - name: Commit generated files
         shell: bash
         run: |
           set -euxo pipefail
-          gradle assembleDebug --no-daemon
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: AmbientFlow-Fix-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Bootstrap project: generate Android app + workflows" || exit 0
+          git push
