@@ -12,7 +12,6 @@ class BriefingSession : Session(), DefaultLifecycleObserver {
 
     override fun onCreateScreen(intent: Intent): Screen {
         lifecycle.addObserver(this)
-        // Init TTS
         tts = TextToSpeech(carContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.JAPAN
@@ -23,6 +22,5 @@ class BriefingSession : Session(), DefaultLifecycleObserver {
     
     override fun onDestroy(owner: LifecycleOwner) {
         tts?.shutdown()
-        // super.onDestroy(owner) は不要（コンパイルエラー原因のため削除）
     }
 }

@@ -37,6 +37,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     
-    // Android Auto Library
+    // Android Auto Library (CarAppService)
     implementation("androidx.car.app:app:1.4.0")
 }
