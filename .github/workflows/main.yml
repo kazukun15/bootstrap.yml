@@ -1,4 +1,4 @@
-name: Bootstrap & Build Android App (Car Launcher Fixed)
+name: Bootstrap & Build Android App (Clean Launcher)
 
 on:
   workflow_dispatch:
@@ -18,15 +18,19 @@ jobs:
       # ---------------------------------------------------------
       # 1. プロジェクト生成フェーズ
       # ---------------------------------------------------------
-      - name: Generate project files (Fix Compile Error)
+      - name: Generate project files (Clean Install)
         id: generate
         shell: bash
         run: |
           echo "Generating Android project files..."
           set -euxo pipefail
 
-          # ディレクトリ作成
-          mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,net,notify,worker}
+          # 【重要】前回の構成ファイル（ゾンビ）を完全に削除してリセットする
+          rm -rf app/src/main/java
+          rm -rf app/src/main/res
+
+          # ディレクトリ再作成
+          mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,net,notify}
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/xml
           mkdir -p app/src/main/res/layout
@@ -66,6 +70,8 @@ jobs:
           android.useAndroidX=true
           android.nonTransitiveRClass=true
           kotlin.code.style=official
+          # 警告抑制
+          android.suppressUnsupportedCompileSdk=35
           EOF
 
           # --- App Build Config ---
@@ -109,7 +115,7 @@ jobs:
               implementation("com.google.android.gms:play-services-location:21.3.0")
               implementation("com.squareup.okhttp3:okhttp:4.12.0")
               
-              // Android Auto Library
+              // Android Auto Library (CarAppService)
               implementation("androidx.car.app:app:1.4.0")
           }
           EOF
@@ -228,7 +234,7 @@ jobs:
           </vector>
           EOF
 
-          # --- Kotlin Code ---
+          # --- Kotlin Code (Cleaned up) ---
           
           # 1. Main Activity
           cat > app/src/main/java/jp/kamijima/cyberbriefing/MainActivity.kt <<'EOF'
@@ -261,7 +267,7 @@ jobs:
           }
           EOF
 
-          # 3. Session (Fixed super.onDestroy)
+          # 3. Session (Clean)
           cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BriefingSession.kt <<'EOF'
           package jp.kamijima.cyberbriefing.car
           import android.content.Intent
@@ -277,7 +283,6 @@ jobs:
 
               override fun onCreateScreen(intent: Intent): Screen {
                   lifecycle.addObserver(this)
-                  // Init TTS
                   tts = TextToSpeech(carContext) { status ->
                       if (status == TextToSpeech.SUCCESS) {
                           tts?.language = Locale.JAPAN
@@ -288,7 +293,6 @@ jobs:
               
               override fun onDestroy(owner: LifecycleOwner) {
                   tts?.shutdown()
-                  // super.onDestroy(owner) は不要（コンパイルエラー原因のため削除）
               }
           }
           EOF
@@ -471,7 +475,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Bootstrap: Fix Compile Error (Session)"
+          git commit -m "Bootstrap: Clean Install & Rebuild"
           git push
 
       # ---------------------------------------------------------
@@ -498,5 +502,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CyberDailyBriefing_Launcher_Fix.apk
+          name: CyberDailyBriefing_Launcher_Clean.apk
           path: app/build/outputs/apk/debug/app-debug.apk
