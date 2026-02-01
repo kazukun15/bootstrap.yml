@@ -34,8 +34,9 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-service:2.8.4")
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
+    // Android Auto Library
     implementation("androidx.car.app:app:1.4.0")
 }

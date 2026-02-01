@@ -1,12 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <uses-permission android:name="android.permission.VIBRATE"/>
+    
+    <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -23,18 +20,16 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".car.AutoConnectionService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property android:name="android.app.property.FOREGROUND_SERVICE_TYPE_SPECIAL_USE_DESCRIPTION"
-                      android:value="Monitoring Android Auto connection state" />
-        </service>
-
-        <receiver android:name=".car.BootReceiver" android:exported="false">
+        <service
+            android:name=".car.BriefingCarAppService"
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
+                <action android:name="androidx.car.app.CarAppService" />
             </intent-filter>
-        </receiver>
+        </service>
+        
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
     </application>
 </manifest>

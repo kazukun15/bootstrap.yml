@@ -1,9 +1,7 @@
 <resources>
     <string name="app_name">Cyber Daily Briefing</string>
-    <string name="notification_channel_monitor">Connection Monitor</string>
-    <string name="monitor_service_title">Auto Monitor Active</string>
-    <string name="monitor_service_desc">Waiting for vehicle connection...</string>
-    <string name="status_monitoring">監視中: サービス稼働しています</string>
-    <string name="btn_test_notify">テスト通知を送る</string>
-    <string name="test_message">テスト通知です。このカードをタップすると読み上げが始まります。</string>
+    <string name="phone_status">準備完了。\nAndroid Autoのメニューから\n「Cyber Briefing」\nを起動してください。</string>
+    <string name="loading">データ取得中...</string>
+    <string name="error_fetch">データの取得に失敗しました</string>
+    <string name="btn_read">読み上げ</string>
 </resources>
