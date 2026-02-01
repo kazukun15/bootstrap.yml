@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Cyber Daily Briefing</string>
+    <string name="notification_channel_monitor">Connection Monitor</string>
+    <string name="monitor_service_title">Auto Monitor Active</string>
+    <string name="monitor_service_desc">Waiting for vehicle connection...</string>
+</resources>
