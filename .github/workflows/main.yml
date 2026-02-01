@@ -1,4 +1,4 @@
-name: Bootstrap & Build Android App (Car Launcher)
+name: Bootstrap & Build Android App (Car Launcher Fixed)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       # ---------------------------------------------------------
       # 1. プロジェクト生成フェーズ
       # ---------------------------------------------------------
-      - name: Generate project files (Launcher Type)
+      - name: Generate project files (Fix Compile Error)
         id: generate
         shell: bash
         run: |
@@ -118,7 +118,7 @@ jobs:
           # (empty)
           EOF
 
-          # --- Manifest (CarAppService宣言) ---
+          # --- Manifest ---
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -228,8 +228,9 @@ jobs:
           </vector>
           EOF
 
-          # --- Kotlin Code: Logic ---
-          # 1. Main Activity (Permission only)
+          # --- Kotlin Code ---
+          
+          # 1. Main Activity
           cat > app/src/main/java/jp/kamijima/cyberbriefing/MainActivity.kt <<'EOF'
           package jp.kamijima.cyberbriefing
           import android.Manifest
@@ -260,7 +261,7 @@ jobs:
           }
           EOF
 
-          # 3. Session & Screen
+          # 3. Session (Fixed super.onDestroy)
           cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BriefingSession.kt <<'EOF'
           package jp.kamijima.cyberbriefing.car
           import android.content.Intent
@@ -287,11 +288,12 @@ jobs:
               
               override fun onDestroy(owner: LifecycleOwner) {
                   tts?.shutdown()
-                  super.onDestroy(owner)
+                  // super.onDestroy(owner) は不要（コンパイルエラー原因のため削除）
               }
           }
           EOF
 
+          # 4. Screen
           cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BriefingScreen.kt <<'EOF'
           package jp.kamijima.cyberbriefing.car
           import android.text.SpannableString
@@ -329,8 +331,8 @@ jobs:
                           message = "エラーが発生しました: ${e.localizedMessage}"
                       } finally {
                           isLoading = false
-                          invalidate() // Refresh UI
-                          speak() // Auto Speak when loaded
+                          invalidate()
+                          speak()
                       }
                   }
               }
@@ -361,7 +363,7 @@ jobs:
           }
           EOF
 
-          # 4. Utilities (Keep existing logic)
+          # 5. Utilities
           cat > app/src/main/java/jp/kamijima/cyberbriefing/net/LocationProvider.kt <<'EOF'
           package jp.kamijima.cyberbriefing.net
           import android.annotation.SuppressLint
@@ -469,7 +471,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Bootstrap: Convert to CarAppService (Launcher)"
+          git commit -m "Bootstrap: Fix Compile Error (Session)"
           git push
 
       # ---------------------------------------------------------
@@ -496,5 +498,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CyberDailyBriefing_Launcher.apk
+          name: CyberDailyBriefing_Launcher_Fix.apk
           path: app/build/outputs/apk/debug/app-debug.apk
