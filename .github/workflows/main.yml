@@ -21,12 +21,17 @@ jobs:
         run: |
           set -euxo pipefail
 
+          # ディレクトリ構造の作成
           mkdir -p .github/workflows
           mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,core,net,notify,worker}
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/drawable-v24
+
+          # ---------------------------------------------------------
+          # Project Root Files
+          # ---------------------------------------------------------
 
           cat > settings.gradle.kts <<'EOF'
           pluginManagement {
@@ -60,6 +65,10 @@ jobs:
           android.nonTransitiveRClass=true
           kotlin.code.style=official
           EOF
+
+          # ---------------------------------------------------------
+          # App Module Build Config
+          # ---------------------------------------------------------
 
           cat > app/build.gradle.kts <<'EOF'
           plugins {
@@ -97,12 +106,10 @@ jobs:
               implementation("androidx.lifecycle:lifecycle-service:2.8.4")
 
               implementation("androidx.work:work-runtime-ktx:2.9.1")
-
               implementation("com.google.android.gms:play-services-location:21.3.0")
-
               implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-              // Android Auto接続状態の検知（CarConnection）
+              // Android Auto接続検知
               implementation("androidx.car.app:app:1.4.0")
           }
           EOF
@@ -110,6 +117,10 @@ jobs:
           cat > app/proguard-rules.pro <<'EOF'
           # (empty)
           EOF
+
+          # ---------------------------------------------------------
+          # Manifest (権限とサービス定義の強化)
+          # ---------------------------------------------------------
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -119,6 +130,8 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 
               <application
                   android:allowBackup="true"
@@ -139,7 +152,11 @@ jobs:
 
                   <service
                       android:name=".car.AutoConnectionService"
-                      android:exported="false" />
+                      android:exported="false"
+                      android:foregroundServiceType="specialUse">
+                      <property android:name="android.app.property.FOREGROUND_SERVICE_TYPE_SPECIAL_USE_DESCRIPTION"
+                                android:value="Monitoring Android Auto connection state" />
+                  </service>
 
                   <receiver
                       android:name=".car.BootReceiver"
@@ -154,9 +171,16 @@ jobs:
           </manifest>
           EOF
 
+          # ---------------------------------------------------------
+          # Resources
+          # ---------------------------------------------------------
+
           cat > app/src/main/res/values/strings.xml <<'EOF'
           <resources>
               <string name="app_name">Cyber Daily Briefing</string>
+              <string name="notification_channel_monitor">Connection Monitor</string>
+              <string name="monitor_service_title">Auto Monitor Active</string>
+              <string name="monitor_service_desc">Waiting for vehicle connection...</string>
           </resources>
           EOF
 
@@ -166,36 +190,28 @@ jobs:
           </resources>
           EOF
 
+          # Icons (Same as before)
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
               <foreground android:drawable="@drawable/ic_launcher_foreground"/>
           </adaptive-icon>
           EOF
-
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml <<'EOF'
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
               <foreground android:drawable="@drawable/ic_launcher_foreground"/>
           </adaptive-icon>
           EOF
-
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
+              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#101820" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
-
           cat > app/src/main/res/drawable-v24/ic_launcher_foreground.xml <<'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
+              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#00E5FF" android:pathData="M28,54h52v4h-52z"/>
               <path android:fillColor="#00E5FF" android:pathData="M54,28h4v52h-4z"/>
               <path android:fillColor="#00E5FF" android:pathData="M24,24h8v8h-8z"/>
@@ -204,6 +220,10 @@ jobs:
               <path android:fillColor="#00E5FF" android:pathData="M76,76h8v8h-8z"/>
           </vector>
           EOF
+
+          # ---------------------------------------------------------
+          # Code: Main Activity
+          # ---------------------------------------------------------
 
           cat > app/src/main/java/jp/kamijima/cyberbriefing/MainActivity.kt <<'EOF'
           package jp.kamijima.cyberbriefing
@@ -217,9 +237,10 @@ jobs:
           import jp.kamijima.cyberbriefing.car.AutoConnectionService
 
           class MainActivity : ComponentActivity() {
+              // 権限許可後にサービスを開始する
               private val requestPermissions =
                   registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-                      startService(Intent(this, AutoConnectionService::class.java))
+                      startForegroundServiceCompat()
                       finish()
                   }
 
@@ -232,8 +253,21 @@ jobs:
                   if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
                   requestPermissions.launch(perms.toTypedArray())
               }
+
+              private fun startForegroundServiceCompat() {
+                  val intent = Intent(this, AutoConnectionService::class.java)
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      startForegroundService(intent)
+                  } else {
+                      startService(intent)
+                  }
+              }
           }
           EOF
+
+          # ---------------------------------------------------------
+          # Code: Boot Receiver (再起動時の自動復帰)
+          # ---------------------------------------------------------
 
           cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BootReceiver.kt <<'EOF'
           package jp.kamijima.cyberbriefing.car
@@ -241,34 +275,61 @@ jobs:
           import android.content.BroadcastReceiver
           import android.content.Context
           import android.content.Intent
+          import android.os.Build
 
           class BootReceiver : BroadcastReceiver() {
               override fun onReceive(context: Context, intent: Intent) {
-                  context.startService(Intent(context, AutoConnectionService::class.java))
+                  if (intent.action == Intent.ACTION_BOOT_COMPLETED || 
+                      intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED) {
+                      
+                      val serviceIntent = Intent(context, AutoConnectionService::class.java)
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                          context.startForegroundService(serviceIntent)
+                      } else {
+                          context.startService(serviceIntent)
+                      }
+                  }
               }
           }
           EOF
 
+          # ---------------------------------------------------------
+          # Code: Service (監視ロジック + 通知常駐)
+          # ---------------------------------------------------------
+
           cat > app/src/main/java/jp/kamijima/cyberbriefing/car/AutoConnectionService.kt <<'EOF'
           package jp.kamijima.cyberbriefing.car
 
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
           import android.app.Service
+          import android.content.Context
           import android.content.Intent
+          import android.os.Build
           import androidx.car.app.connection.CarConnection
+          import androidx.core.app.NotificationCompat
           import androidx.lifecycle.LifecycleService
+          import jp.kamijima.cyberbriefing.R
           import jp.kamijima.cyberbriefing.core.DailyExecutionGuard
           import jp.kamijima.cyberbriefing.core.WorkScheduler
 
           class AutoConnectionService : LifecycleService() {
               private var lastState: Int = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
+              private val CHANNEL_ID = "monitor_channel"
+              private val NOTIFICATION_ID = 999
 
               override fun onCreate() {
                   super.onCreate()
-                  val guard = DailyExecutionGuard(this)
+                  // 1. フォアグラウンド通知を作成して死なないようにする
+                  startForeground(NOTIFICATION_ID, createNotification())
 
+                  // 2. 監視ロジック
+                  val guard = DailyExecutionGuard(this)
                   CarConnection(applicationContext).type.observe(this) { state ->
                       val prev = lastState
                       lastState = state
+                      // 投影開始 (Projection) を検知
                       if (prev != CarConnection.CONNECTION_TYPE_PROJECTION &&
                           state == CarConnection.CONNECTION_TYPE_PROJECTION
                       ) {
@@ -280,10 +341,34 @@ jobs:
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  super.onStartCommand(intent, flags, startId)
                   return Service.START_STICKY
+              }
+
+              private fun createNotification(): Notification {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      val channel = NotificationChannel(
+                          CHANNEL_ID,
+                          getString(R.string.notification_channel_monitor),
+                          NotificationManager.IMPORTANCE_MIN // 通知音を鳴らさない
+                      )
+                      nm.createNotificationChannel(channel)
+                  }
+
+                  return NotificationCompat.Builder(this, CHANNEL_ID)
+                      .setContentTitle(getString(R.string.monitor_service_title))
+                      .setContentText(getString(R.string.monitor_service_desc))
+                      .setSmallIcon(R.mipmap.ic_launcher)
+                      .setPriority(NotificationCompat.PRIORITY_MIN)
+                      .build()
               }
           }
           EOF
+
+          # ---------------------------------------------------------
+          # Code: Core Logic (Guard & Scheduler)
+          # ---------------------------------------------------------
 
           cat > app/src/main/java/jp/kamijima/cyberbriefing/core/DailyExecutionGuard.kt <<'EOF'
           package jp.kamijima.cyberbriefing.core
@@ -298,6 +383,7 @@ jobs:
                   val today = LocalDate.now().toString()
                   val last = prefs.getString("last_execution_date", null)
                   if (last == today) return false
+                  
                   prefs.edit().putString("last_execution_date", today).apply()
                   return true
               }
@@ -330,9 +416,12 @@ jobs:
           }
           EOF
 
+          # ---------------------------------------------------------
+          # Code: Worker & Logic
+          # ---------------------------------------------------------
+
           cat > app/src/main/java/jp/kamijima/cyberbriefing/worker/DateUtil.kt <<'EOF'
           package jp.kamijima.cyberbriefing.worker
-
           import java.time.LocalDate
 
           object DateUtil {
@@ -379,6 +468,10 @@ jobs:
           }
           EOF
 
+          # ---------------------------------------------------------
+          # Code: Network
+          # ---------------------------------------------------------
+
           cat > app/src/main/java/jp/kamijima/cyberbriefing/net/LocationProvider.kt <<'EOF'
           package jp.kamijima.cyberbriefing.net
 
@@ -419,7 +512,7 @@ jobs:
                   val url = "https://api.wikimedia.org/feed/v1/wikipedia/ja/onthisday/events/$mm/$dd"
                   val req = Request.Builder()
                       .url(url)
-                      .header("User-Agent", "CyberDailyBriefing/1.0 (Android)")
+                      .header("User-Agent", "CyberDailyBriefing/1.0 (contact@example.com)") // 推奨形式
                       .build()
 
                   http.newCall(req).execute().use { res ->
@@ -435,7 +528,8 @@ jobs:
                           val text = ev.optString("text").trim()
                           if (text.isBlank()) continue
                           val len = text.length
-                          if (len in 20..90 && len < bestLen) { best = text; bestLen = len }
+                          // 読み上げに適した長さ（短すぎず長すぎず）
+                          if (len in 25..80 && len < bestLen) { best = text; bestLen = len }
                       }
                       if (best == null && events.length() > 0) {
                           best = events.getJSONObject(0).optString("text").trim().ifBlank { null }
@@ -479,7 +573,7 @@ jobs:
 
                       var maxProb = -1
                       if (probs != null) {
-                          val n = minOf(3, probs.length())
+                          val n = minOf(6, probs.length()) // 直近数時間
                           for (i in 0 until n) {
                               val p = probs.optInt(i, -1)
                               if (p > maxProb) maxProb = p
@@ -493,21 +587,25 @@ jobs:
                       val tStr = if (!t.isNaN()) "${t.roundToInt()}度" else null
 
                       val probStr = when {
-                          maxProb >= 70 -> "降雨の可能性が高い"
-                          maxProb >= 40 -> "降雨の可能性があります"
-                          maxProb >= 10 -> "弱い降雨の可能性があります"
-                          maxProb in 0..9 -> "大きな降雨兆候は低い"
+                          maxProb >= 70 -> "雨の確率は高いです"
+                          maxProb >= 40 -> "雨の可能性があります"
+                          maxProb >= 20 -> "一時的に降るかもしれません"
+                          maxProb in 0..19 -> "降雨の心配はありません"
                           else -> null
                       }
 
                       return listOfNotNull(
-                          probStr?.let { "午後に向けて$it" },
-                          tStr?.let { "気温は概ね$tStr" }
-                      ).joinToString("。").ifBlank { null }
+                          probStr,
+                          tStr?.let { "気温$it" }
+                      ).joinToString("、").ifBlank { null }
                   }
               }
           }
           EOF
+
+          # ---------------------------------------------------------
+          # Code: Notification (MessagingStyle)
+          # ---------------------------------------------------------
 
           cat > app/src/main/java/jp/kamijima/cyberbriefing/notify/BriefingComposer.kt <<'EOF'
           package jp.kamijima.cyberbriefing.notify
@@ -515,17 +613,18 @@ jobs:
           object BriefingComposer {
               fun composeCyber(mm: String, dd: String, onThisDay: String?, weather: String?): String {
                   val datePart = "${mm.toInt()}月${dd.toInt()}日"
-                  val today = onThisDay?.let { sanitize(it) } ?: "本日の履歴データは取得できませんでした"
-                  val w = weather?.let { sanitize(it) } ?: "気象データは未取得です"
+                  val today = onThisDay?.let { sanitize(it) } ?: "過去データなし"
+                  val w = weather?.let { sanitize(it) } ?: "気象データなし"
 
                   val raw = buildString {
                       append("システム通知。")
                       append("本日は").append(datePart).append("。")
                       append(today).append("。")
-                      append("現在地周辺では").append(w).append("。")
-                      append("運転環境の変化に注意してください。")
+                      append("現在地は、").append(w).append("。")
+                      append("安全運転を開始してください。")
                   }
-                  return if (raw.length <= 140) raw else raw.take(140) + "…"
+                  // 長すぎる場合はカット
+                  return if (raw.length <= 160) raw else raw.take(159) + "…"
               }
 
               private fun sanitize(s: String): String =
@@ -571,7 +670,7 @@ jobs:
                       .setContentIntent(pi)
                       .setAutoCancel(true)
                       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                      .setPriority(NotificationCompat.PRIORITY_HIGH) // 読み上げ誘導のため高めに
                       .build()
 
                   val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -590,7 +689,10 @@ jobs:
           }
           EOF
 
-          # Build workflow (android.yml) - wrapper不要のGradle実行
+          # ---------------------------------------------------------
+          # CI Workflow
+          # ---------------------------------------------------------
+
           cat > .github/workflows/android.yml <<'EOF'
           name: Build APK (Cyber Daily Briefing)
 
