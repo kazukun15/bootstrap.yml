@@ -1,4 +1,4 @@
-name: Bootstrap & Build Android App (Message Style)
+name: Bootstrap & Build Android App (Car Launcher)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       # ---------------------------------------------------------
       # 1. プロジェクト生成フェーズ
       # ---------------------------------------------------------
-      - name: Generate project files (Force Update)
+      - name: Generate project files (Launcher Type)
         id: generate
         shell: bash
         run: |
@@ -26,8 +26,9 @@ jobs:
           set -euxo pipefail
 
           # ディレクトリ作成
-          mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,core,net,notify,worker}
+          mkdir -p app/src/main/java/jp/kamijima/cyberbriefing/{car,net,notify,worker}
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/xml
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p app/src/main/res/drawable
@@ -105,9 +106,10 @@ jobs:
               implementation("androidx.constraintlayout:constraintlayout:2.1.4")
               implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
               implementation("androidx.lifecycle:lifecycle-service:2.8.4")
-              implementation("androidx.work:work-runtime-ktx:2.9.1")
               implementation("com.google.android.gms:play-services-location:21.3.0")
               implementation("com.squareup.okhttp3:okhttp:4.12.0")
+              
+              // Android Auto Library
               implementation("androidx.car.app:app:1.4.0")
           }
           EOF
@@ -116,17 +118,14 @@ jobs:
           # (empty)
           EOF
 
-          # --- Manifest ---
+          # --- Manifest (CarAppService宣言) ---
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
               <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-              <uses-permission android:name="android.permission.VIBRATE"/>
+              
+              <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
 
               <application
                   android:allowBackup="true"
@@ -143,19 +142,17 @@ jobs:
                       </intent-filter>
                   </activity>
 
-                  <service android:name=".car.AutoConnectionService"
-                      android:exported="false"
-                      android:foregroundServiceType="specialUse">
-                      <property android:name="android.app.property.FOREGROUND_SERVICE_TYPE_SPECIAL_USE_DESCRIPTION"
-                                android:value="Monitoring Android Auto connection state" />
-                  </service>
-
-                  <receiver android:name=".car.BootReceiver" android:exported="false">
+                  <service
+                      android:name=".car.BriefingCarAppService"
+                      android:exported="true">
                       <intent-filter>
-                          <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                          <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
+                          <action android:name="androidx.car.app.CarAppService" />
                       </intent-filter>
-                  </receiver>
+                  </service>
+                  
+                  <meta-data
+                      android:name="androidx.car.app.minCarApiLevel"
+                      android:value="1" />
               </application>
           </manifest>
           EOF
@@ -164,12 +161,10 @@ jobs:
           cat > app/src/main/res/values/strings.xml <<'EOF'
           <resources>
               <string name="app_name">Cyber Daily Briefing</string>
-              <string name="notification_channel_monitor">Connection Monitor</string>
-              <string name="monitor_service_title">Auto Monitor Active</string>
-              <string name="monitor_service_desc">Waiting for vehicle connection...</string>
-              <string name="status_monitoring">監視中: サービス稼働しています</string>
-              <string name="btn_test_notify">テスト通知を送る</string>
-              <string name="test_message">テスト通知です。このカードをタップすると読み上げが始まります。</string>
+              <string name="phone_status">準備完了。\nAndroid Autoのメニューから\n「Cyber Briefing」\nを起動してください。</string>
+              <string name="loading">データ取得中...</string>
+              <string name="error_fetch">データの取得に失敗しました</string>
+              <string name="btn_read">読み上げ</string>
           </resources>
           EOF
 
@@ -179,7 +174,6 @@ jobs:
           </resources>
           EOF
 
-          # --- Layout ---
           cat > app/src/main/res/layout/activity_main.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -188,30 +182,18 @@ jobs:
               android:layout_height="match_parent"
               android:padding="24dp"
               android:background="#101820">
-
               <TextView
                   android:id="@+id/tvStatus"
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
-                  android:text="@string/status_monitoring"
+                  android:text="@string/phone_status"
                   android:textColor="#00E5FF"
-                  android:textSize="18sp"
-                  android:textStyle="bold"
+                  android:textSize="20sp"
+                  android:textAlignment="center"
                   app:layout_constraintTop_toTopOf="parent"
+                  app:layout_constraintBottom_toBottomOf="parent"
                   app:layout_constraintStart_toStartOf="parent"
-                  app:layout_constraintEnd_toEndOf="parent"
-                  app:layout_constraintBottom_toTopOf="@+id/btnTest"/>
-
-              <Button
-                  android:id="@+id/btnTest"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:text="@string/btn_test_notify"
-                  app:layout_constraintTop_toBottomOf="@+id/tvStatus"
-                  app:layout_constraintStart_toStartOf="parent"
-                  app:layout_constraintEnd_toEndOf="parent"
-                  app:layout_constraintBottom_toBottomOf="parent"/>
-
+                  app:layout_constraintEnd_toEndOf="parent"/>
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
@@ -246,181 +228,140 @@ jobs:
           </vector>
           EOF
 
-          # --- Kotlin Code ---
+          # --- Kotlin Code: Logic ---
+          # 1. Main Activity (Permission only)
           cat > app/src/main/java/jp/kamijima/cyberbriefing/MainActivity.kt <<'EOF'
           package jp.kamijima.cyberbriefing
           import android.Manifest
-          import android.content.Intent
-          import android.os.Build
           import android.os.Bundle
-          import android.widget.Button
           import androidx.activity.ComponentActivity
           import androidx.activity.result.contract.ActivityResultContracts
-          import jp.kamijima.cyberbriefing.car.AutoConnectionService
-          import jp.kamijima.cyberbriefing.notify.BriefingNotifier
-
           class MainActivity : ComponentActivity() {
               private val requestPermissions =
-                  registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-                      startForegroundServiceCompat()
-                  }
-
+                  registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   setContentView(R.layout.activity_main)
+                  requestPermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+              }
+          }
+          EOF
 
-                  findViewById<Button>(R.id.btnTest).setOnClickListener {
-                      // テストボタン: このボタンを押すと数秒後に通知が飛びます
-                      BriefingNotifier(this).notifyMessage(getString(R.string.test_message))
+          # 2. Car App Service
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BriefingCarAppService.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.car
+          import android.content.Intent
+          import androidx.car.app.CarAppService
+          import androidx.car.app.Session
+          import androidx.car.app.validation.HostValidator
+          class BriefingCarAppService : CarAppService() {
+              override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+              override fun onCreateSession(): Session = BriefingSession()
+          }
+          EOF
+
+          # 3. Session & Screen
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BriefingSession.kt <<'EOF'
+          package jp.kamijima.cyberbriefing.car
+          import android.content.Intent
+          import android.speech.tts.TextToSpeech
+          import androidx.car.app.Screen
+          import androidx.car.app.Session
+          import androidx.lifecycle.DefaultLifecycleObserver
+          import androidx.lifecycle.LifecycleOwner
+          import java.util.Locale
+
+          class BriefingSession : Session(), DefaultLifecycleObserver {
+              var tts: TextToSpeech? = null
+
+              override fun onCreateScreen(intent: Intent): Screen {
+                  lifecycle.addObserver(this)
+                  // Init TTS
+                  tts = TextToSpeech(carContext) { status ->
+                      if (status == TextToSpeech.SUCCESS) {
+                          tts?.language = Locale.JAPAN
+                      }
                   }
-
-                  val perms = mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  requestPermissions.launch(perms.toTypedArray())
+                  return BriefingScreen(carContext, this)
               }
               
-              private fun startForegroundServiceCompat() {
-                  val intent = Intent(this, AutoConnectionService::class.java)
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { startForegroundService(intent) } else { startService(intent) }
+              override fun onDestroy(owner: LifecycleOwner) {
+                  tts?.shutdown()
+                  super.onDestroy(owner)
               }
           }
           EOF
 
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BootReceiver.kt <<'EOF'
+          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/BriefingScreen.kt <<'EOF'
           package jp.kamijima.cyberbriefing.car
-          import android.content.BroadcastReceiver
-          import android.content.Context
-          import android.content.Intent
-          import android.os.Build
-          class BootReceiver : BroadcastReceiver() {
-              override fun onReceive(context: Context, intent: Intent) {
-                  if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED) {
-                      val serviceIntent = Intent(context, AutoConnectionService::class.java)
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { context.startForegroundService(serviceIntent) } else { context.startService(serviceIntent) }
-                  }
-              }
-          }
-          EOF
+          import android.text.SpannableString
+          import android.text.Spanned
+          import androidx.car.app.CarContext
+          import androidx.car.app.Screen
+          import androidx.car.app.model.*
+          import androidx.lifecycle.lifecycleScope
+          import jp.kamijima.cyberbriefing.net.LocationProvider
+          import jp.kamijima.cyberbriefing.net.OnThisDayClient
+          import jp.kamijima.cyberbriefing.net.WeatherClient
+          import jp.kamijima.cyberbriefing.notify.BriefingComposer
+          import kotlinx.coroutines.launch
+          import java.time.LocalDate
 
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/car/AutoConnectionService.kt <<'EOF'
-          package jp.kamijima.cyberbriefing.car
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.Service
-          import android.content.Context
-          import android.content.Intent
-          import android.os.Build
-          import androidx.car.app.connection.CarConnection
-          import androidx.core.app.NotificationCompat
-          import androidx.lifecycle.LifecycleService
-          import jp.kamijima.cyberbriefing.R
-          import jp.kamijima.cyberbriefing.core.DailyExecutionGuard
-          import jp.kamijima.cyberbriefing.core.WorkScheduler
-          class AutoConnectionService : LifecycleService() {
-              private var lastState: Int = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
-              private val CHANNEL_ID = "monitor_channel"
-              private val NOTIFICATION_ID = 999
-              override fun onCreate() {
-                  super.onCreate()
-                  startForeground(NOTIFICATION_ID, createNotification())
-                  val guard = DailyExecutionGuard(this)
-                  CarConnection(applicationContext).type.observe(this) { state ->
-                      val prev = lastState
-                      lastState = state
-                      if (prev != CarConnection.CONNECTION_TYPE_PROJECTION && state == CarConnection.CONNECTION_TYPE_PROJECTION) {
-                          if (guard.shouldRunToday()) { WorkScheduler.enqueueBriefing(applicationContext) }
+          class BriefingScreen(carContext: CarContext, private val session: BriefingSession) : Screen(carContext) {
+              private var message: String = "データを取得しています..."
+              private var isLoading = true
+
+              init {
+                  loadData()
+              }
+
+              private fun loadData() {
+                  lifecycleScope.launch {
+                      try {
+                          val loc = LocationProvider(carContext).getCurrentLocationOrNull()
+                          val d = LocalDate.now()
+                          val mm = d.monthValue.toString().padStart(2, '0')
+                          val dd = d.dayOfMonth.toString().padStart(2, '0')
+                          val onThisDay = OnThisDayClient().fetchOneEventJa(mm, dd)
+                          val weather = if (loc != null) WeatherClient().fetchWeatherSummary(loc.latitude, loc.longitude) else null
+                          message = BriefingComposer.composeCyber(mm, dd, onThisDay, weather)
+                      } catch (e: Exception) {
+                          message = "エラーが発生しました: ${e.localizedMessage}"
+                      } finally {
+                          isLoading = false
+                          invalidate() // Refresh UI
+                          speak() // Auto Speak when loaded
                       }
                   }
               }
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  super.onStartCommand(intent, flags, startId)
-                  return Service.START_STICKY
+
+              private fun speak() {
+                  session.tts?.speak(message, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "briefing")
               }
-              private fun createNotification(): Notification {
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                      nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, getString(R.string.notification_channel_monitor), NotificationManager.IMPORTANCE_MIN))
+
+              override fun onGetTemplate(): Template {
+                  val paneBuilder = Pane.Builder()
+                  
+                  if (isLoading) {
+                      paneBuilder.setLoading(true)
+                  } else {
+                      paneBuilder.addRow(Row.Builder().setTitle("Cyber Daily Briefing").addText(message).build())
+                      paneBuilder.addAction(
+                          Action.Builder()
+                              .setTitle("読み上げ")
+                              .setOnClickListener { speak() }
+                              .build()
+                      )
                   }
-                  return NotificationCompat.Builder(this, CHANNEL_ID)
-                      .setContentTitle(getString(R.string.monitor_service_title))
-                      .setContentText(getString(R.string.monitor_service_desc))
-                      .setSmallIcon(R.mipmap.ic_launcher)
-                      .setPriority(NotificationCompat.PRIORITY_MIN)
+
+                  return PaneTemplate.Builder(paneBuilder.build())
+                      .setTitle("Cyber Briefing")
                       .build()
               }
           }
           EOF
 
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/core/DailyExecutionGuard.kt <<'EOF'
-          package jp.kamijima.cyberbriefing.core
-          import android.content.Context
-          import java.time.LocalDate
-          class DailyExecutionGuard(context: Context) {
-              private val prefs = context.getSharedPreferences("cyber_briefing", Context.MODE_PRIVATE)
-              fun shouldRunToday(): Boolean {
-                  val today = LocalDate.now().toString()
-                  val last = prefs.getString("last_execution_date", null)
-                  if (last == today) return false
-                  prefs.edit().putString("last_execution_date", today).apply()
-                  return true
-              }
-          }
-          EOF
-
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/core/WorkScheduler.kt <<'EOF'
-          package jp.kamijima.cyberbriefing.core
-          import android.content.Context
-          import androidx.work.Constraints
-          import androidx.work.NetworkType
-          import androidx.work.OneTimeWorkRequestBuilder
-          import androidx.work.WorkManager
-          import jp.kamijima.cyberbriefing.worker.BriefingWorker
-          object WorkScheduler {
-              fun enqueueBriefing(context: Context) {
-                  val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-                  val req = OneTimeWorkRequestBuilder<BriefingWorker>().setConstraints(constraints).addTag("daily_briefing").build()
-                  WorkManager.getInstance(context).enqueue(req)
-              }
-          }
-          EOF
-
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/worker/DateUtil.kt <<'EOF'
-          package jp.kamijima.cyberbriefing.worker
-          import java.time.LocalDate
-          object DateUtil {
-              fun todayMonthDay(): Pair<String, String> {
-                  val d = LocalDate.now()
-                  return d.monthValue.toString().padStart(2, '0') to d.dayOfMonth.toString().padStart(2, '0')
-              }
-          }
-          EOF
-
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/worker/BriefingWorker.kt <<'EOF'
-          package jp.kamijima.cyberbriefing.worker
-          import android.content.Context
-          import androidx.work.CoroutineWorker
-          import androidx.work.WorkerParameters
-          import jp.kamijima.cyberbriefing.net.LocationProvider
-          import jp.kamijima.cyberbriefing.net.OnThisDayClient
-          import jp.kamijima.cyberbriefing.net.WeatherClient
-          import jp.kamijima.cyberbriefing.notify.BriefingComposer
-          import jp.kamijima.cyberbriefing.notify.BriefingNotifier
-          class BriefingWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
-              override suspend fun doWork(): Result {
-                  return try {
-                      val loc = LocationProvider(applicationContext).getCurrentLocationOrNull()
-                      val (mm, dd) = DateUtil.todayMonthDay()
-                      val onThisDay = OnThisDayClient().fetchOneEventJa(mm, dd)
-                      val weather = if (loc != null) WeatherClient().fetchWeatherSummary(loc.latitude, loc.longitude) else null
-                      val text = BriefingComposer.composeCyber(mm, dd, onThisDay, weather)
-                      BriefingNotifier(applicationContext).notifyMessage(text)
-                      Result.success()
-                  } catch (_: Exception) { Result.failure() }
-              }
-          }
-          EOF
-
+          # 4. Utilities (Keep existing logic)
           cat > app/src/main/java/jp/kamijima/cyberbriefing/net/LocationProvider.kt <<'EOF'
           package jp.kamijima.cyberbriefing.net
           import android.annotation.SuppressLint
@@ -506,7 +447,6 @@ jobs:
           }
           EOF
 
-          # --- Notifier (Key Change: HIGH IMPORTANCE) ---
           cat > app/src/main/java/jp/kamijima/cyberbriefing/notify/BriefingComposer.kt <<'EOF'
           package jp.kamijima.cyberbriefing.notify
           object BriefingComposer {
@@ -514,69 +454,7 @@ jobs:
                   val datePart = "${mm.toInt()}月${dd.toInt()}日"
                   val today = onThisDay?.let { it.replace(Regex("\\s+"), " ").trim() } ?: "過去データなし"
                   val w = weather?.let { it.replace(Regex("\\s+"), " ").trim() } ?: "気象データなし"
-                  val raw = "システム通知。本日は${datePart}。${today}。現在地は、${w}。安全運転を開始してください。"
-                  return if (raw.length <= 160) raw else raw.take(159) + "…"
-              }
-          }
-          EOF
-
-          cat > app/src/main/java/jp/kamijima/cyberbriefing/notify/BriefingNotifier.kt <<'EOF'
-          package jp.kamijima.cyberbriefing.notify
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.content.Context
-          import android.content.Intent
-          import android.os.Build
-          import androidx.core.app.NotificationCompat
-          import androidx.core.app.Person
-          import jp.kamijima.cyberbriefing.MainActivity
-          import jp.kamijima.cyberbriefing.R
-          class BriefingNotifier(private val context: Context) {
-              // チャンネルIDを変更して強制的に設定を更新させる
-              private val channelId = "daily_briefing_v2"
-              
-              fun notifyMessage(text: String) {
-                  ensureChannel()
-                  val systemPerson = Person.Builder().setName("Cyber Briefing").setBot(true).build()
-                  
-                  // メッセージスタイルの構築
-                  val style = NotificationCompat.MessagingStyle(systemPerson)
-                      .setConversationTitle("今日のブリーフィング") // 会話タイトル
-                      .addMessage(text, System.currentTimeMillis(), systemPerson)
-                  
-                  val intent = Intent(context, MainActivity::class.java)
-                  val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
-                  val pi = PendingIntent.getActivity(context, 0, intent, flags)
-                  
-                  // 通知ビルダー (Heads-up設定)
-                  val n = NotificationCompat.Builder(context, channelId)
-                      .setSmallIcon(R.mipmap.ic_launcher)
-                      .setContentTitle("今日のブリーフィング")
-                      .setContentText(text)
-                      .setStyle(style)
-                      .setContentIntent(pi)
-                      .setAutoCancel(true)
-                      .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                      // 重要度MAX: これでAndroid Auto上でポップアップを誘発する
-                      .setPriority(NotificationCompat.PRIORITY_MAX) 
-                      .setDefaults(NotificationCompat.DEFAULT_ALL)
-                      // バイブレーション設定 (ポップアップ条件のクリア用)
-                      .setVibrate(longArrayOf(0, 500, 200, 500))
-                      .build()
-                      
-                  (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(1001, n)
-              }
-              
-              private fun ensureChannel() {
-                  if (Build.VERSION.SDK_INT < 26) return
-                  // チャンネル重要度をHIGHに設定 (Heads-up必須条件)
-                  val channel = NotificationChannel(channelId, "Daily Briefing High", NotificationManager.IMPORTANCE_HIGH).apply {
-                      description = "ポップアップ通知を行うためのチャンネル"
-                      enableVibration(true)
-                      vibrationPattern = longArrayOf(0, 500, 200, 500)
-                  }
-                  (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+                  return "システム通知。本日は${datePart}。${today}。現在地は、${w}。安全運転を開始してください。"
               }
           }
           EOF
@@ -591,7 +469,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Bootstrap: Update to Message Style Notification"
+          git commit -m "Bootstrap: Convert to CarAppService (Launcher)"
           git push
 
       # ---------------------------------------------------------
@@ -618,5 +496,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CyberDailyBriefing_Message.apk
+          name: CyberDailyBriefing_Launcher.apk
           path: app/build/outputs/apk/debug/app-debug.apk
